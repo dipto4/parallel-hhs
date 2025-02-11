@@ -11,9 +11,21 @@ struct vec3 {
     __device__ __host__ vec3(const T& xi, const T& yi, const T& zi) : x(xi) , y(yi), z(zi) {}
 
     __device__ __host__ vec3(const vec3& v) : x(v.x), y(v.y), z(v.z) {}
+    
+    __device__ __host__ vec3& operator=(const vec3& v) {
+        if (this != &v) {
+            x = v.x;
+            y = v.y;
+            z = v.z;
+        }
+        return *this;
+    }
 
     __device__ __host__ vec3 operator+(vec3 const& v) const {
         return vec3(v.x+x, v.y+y, v.z+z);
+    }
+     __device__ __host__ vec3 operator-(vec3 const& v) const {
+        return vec3(x-v.x, y-v.y, z-v.z);
     }
     
     __device__ __host__ T operator*(vec3 const& v) const {

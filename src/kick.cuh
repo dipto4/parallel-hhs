@@ -1,7 +1,7 @@
 #pragma once
 #include<cuda_runtime.h>
-#include "vec3.h"
-#include "utils.h"
+#include "vec.cuh"
+#include "utils.cuh"
 
 template<typename T, int BLOCKSIZE>
 void kick_slow(const vec3<T>* __restrict__ pos, 
@@ -20,15 +20,16 @@ void kick_sf(const vec3<T>* __restrict__ so_pos,
         T* dt, T* fac, const int N);
 
 template<typename T, int BLOCKSIZE>
-__device__ void pp_force(const vec3<T>& sink, const vec3<T>* __restrict__ sources, const T* __restrict__ m, vec3<T> acc) {
+__device__ void pp_force(const vec3<T>& sink, const vec3<T>* __restrict__ sources, const T* __restrict__ m, vec3<T>& acc) {
 #pragma unroll
     for(size_t i = 0 ; i < BLOCKSIZE ; i++) {
-        vec3 dx = sources[i] - sink[i];
-        T d2 = dx3.norm2();
-        T d = sqrt(d);
+        vec3<T> dx = sources[i] - sink;
+        T d2 = dx.norm2();
+        if(d2 == (T) 0.0) continue;
+        T d = sqrt(d2);
         T one_over_d3 = 1.0/(d2 * d);
-        vec3 ai =  -(m[i]) * one_over_d3 * dx;
-        acc += ai;
+        vec3<T> ai =  dx * (-m[i] * one_over_d3);
+        acc = acc + ai;
     }
 
 }
@@ -37,7 +38,8 @@ template<typename T, int BLOCKSIZE>
 __global__ void _kick_slow(const vec3<T>* __restrict__ pos,
         vec3<T>* __restrict__ vel,
         vec3<T>* __restrict__ acc,
-        T* dt, T* fac, const int N) {
+        T* __restrict__ m,
+        const T dt, const T fac, const int N) {
 
     // steps: O(N^2) force calculation
     // kick step
@@ -61,7 +63,8 @@ __global__ void _kick_slow(const vec3<T>* __restrict__ pos,
 
     acc[tid] = acc_i;    
     
-    vel[tid] += fac * acc_i;
+    vel[tid] = vel[tid] + acc_i * fac;
+
 
 
 }
@@ -69,10 +72,11 @@ __global__ void _kick_slow(const vec3<T>* __restrict__ pos,
 
 template<typename T, int BLOCKSIZE>
 __global__ void _kick_sf(const vec3<T>* __restrict__ so_pos,
+        T* __restrict__ so_m,
         const vec3<T>* __restrict__ si_pos, 
         vec3<T>* __restrict__ si_vel, 
         vec3<T>* __restrict__ si_acc, 
-        T* dt, T* fac, const int N
+        const T dt, const T fac, const int N
         ) {
 
     __shared__ vec3<T> cache[BLOCKSIZE];
@@ -95,7 +99,7 @@ __global__ void _kick_sf(const vec3<T>* __restrict__ so_pos,
 
     si_acc[tid] = acc_i;    
 
-    si_vel[tid] += fac * acc_i;
+    si_vel[tid] = si_vel[tid] +  acc_i * (fac * dt);
 }
 
 

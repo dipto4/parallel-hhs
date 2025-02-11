@@ -2,8 +2,19 @@
 #pragma once
 #include<iostream>
 #include<cuda_runtime.h>
-#include "vec.h"
-#include "utils.h"
+#include "vec.cuh"
+#include "utils.cuh"
+
+struct partition {
+    int N_slow;
+    int N_fast;
+};
+
+template<typename T>
+struct nbody_params {
+    T eta;
+    T eps;
+}
 
 
 template<typename T>
@@ -35,6 +46,44 @@ class particle_system {
         void gpu_to_host(particle_system* gpu_system);
 
 };
+
+/* this is only required for the GPU version of the code so
+   only GPU mallocs and frees and needed*/
+template<typename T>
+class nbodysystem_buffers {
+    public:
+        int* predicate;
+        int* scanned_predicate;
+        particle_system<T>* slow;
+        particle_system<T>* fast;
+        int N_total;
+        partition* part;
+        nbody_params<T>* params; 
+
+        nbodysystem_buffers(N_init) : N_total(N_init) {
+            std::cout<<"Initializing slow, fast, predicate and scanned_predicate buffers"
+            gpuErrchk( cudaMalloc(&predicate, sizeof(int) * N_init) );
+            gpuErrchk( cudaMalloc(&scanned_predicate) , sizeof(int) * N_init );
+            gpuErrchk( cudaMalloc(&part), sizeof(partition) );
+            gpuErrchk( cudaMalloc(&params), sizeof(params) );
+            slow = new particle_system<T>(N_init, 'g');
+            fast = new particle_system<T>(N_init, 'g');
+            slow->gpu_alloc();
+            fast->gpu_alloc();
+            //gpuErrchk(  );
+            //gpuErrchk(  );
+        }
+
+        ~nbodysystem_buffers() {
+            gpuErrchk ( cudaFree(predicate) );
+            gpuErrchk ( cudaFree(scanned_predicate) );
+            gpuErrchk ( cudaFree(partition) );
+            gpuErrchk ( cudaFree(nbody_params) );
+            slow->gpu_free();
+            fast->gpu_free();
+        }
+};
+
 
 template<typename T>
 inline void particle_system::gpu_alloc() {
