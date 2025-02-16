@@ -26,6 +26,8 @@ class particle_system {
         T* timestep;
         T* m;
         int N;
+        int* id;
+        int* parent_id;
         char store; // either 'g' or 'c' indicating where the 
                     // data is stored so it is not illegally 
                     // accessed
@@ -34,6 +36,8 @@ class particle_system {
             vel = nullptr;
             acc = nullptr;
             m = nullptr;
+            id = nullptr;
+            parent_id = nullptr;
         } 
         
         void gpu_alloc();
@@ -48,24 +52,68 @@ class particle_system {
 };
 
 /* this is only required for the GPU version of the code so
-   only GPU mallocs and frees and needed*/
+   only GPU mallocs and frees and needed
+TODO: store the partition and nbody_params buffers in unified memory
+    so the cpu can access them too
+    ensure proper synchronization!
+
+Dipto (Feb 13) : changed to unified memory for some buffers    
+ */
+
 template<typename T>
-class nbodysystem_buffers {
+class nbodysystem_globals {
     public:
         int* predicate;
         int* scanned_predicate;
+        
+        T simtime;
+
+        int N_total;
+        nbody_params<T>* params;
+         
+        nbodysystem_globals(N_init, eta, eps) : N_total(N_init) {
+            std::cout<<"Initializing predicate and scanned_predicate buffers"<<std::endl;
+            gpuErrchk ( cudaMalloc(&predicate , sizeof(int) * N_total) );
+            gpuErrchk ( cudaMalloc(&scanned_predicate , sizeof(int) * N_total) );
+            
+            gpuErrchk ( cudaMallocManaged(&params, sizeof(nbody_params<T>)) );
+            params->eta = eta;
+            params->eps = eps;
+
+            simtime = (T) 0.0;
+        }
+
+        ~nbodysystem_globals() {
+            gpuErrchk ( cudaFree(predicate) );
+            gpuErrchk ( cudaFree(scanned_predicate) );
+            gpuErrchk ( cudaFree(params) );
+
+        }
+
+        void flush_simtime() {
+            simtime = (T) 0.0;
+        }
+        
+        void print_simtime() {
+            std::cout<<"simtime: "<<simtime<<std::endl;
+        }
+
+
+}
+
+
+template<typename T>
+class nbodysystem_buffers {
+    public:
         particle_system<T>* slow;
         particle_system<T>* fast;
         int N_total;
         partition* part;
-        nbody_params<T>* params; 
 
         nbodysystem_buffers(N_init) : N_total(N_init) {
-            std::cout<<"Initializing slow, fast, predicate and scanned_predicate buffers"
-            gpuErrchk( cudaMalloc(&predicate, sizeof(int) * N_init) );
-            gpuErrchk( cudaMalloc(&scanned_predicate) , sizeof(int) * N_init );
-            gpuErrchk( cudaMalloc(&part), sizeof(partition) );
-            gpuErrchk( cudaMalloc(&params), sizeof(params) );
+#ifdef CUDA_DEBUG
+            std::cout<<"Initializing slow and fast buffers"<<std::endl;
+#endif
             slow = new particle_system<T>(N_init, 'g');
             fast = new particle_system<T>(N_init, 'g');
             slow->gpu_alloc();
@@ -75,10 +123,7 @@ class nbodysystem_buffers {
         }
 
         ~nbodysystem_buffers() {
-            gpuErrchk ( cudaFree(predicate) );
-            gpuErrchk ( cudaFree(scanned_predicate) );
             gpuErrchk ( cudaFree(partition) );
-            gpuErrchk ( cudaFree(nbody_params) );
             slow->gpu_free();
             fast->gpu_free();
         }
@@ -101,7 +146,7 @@ inline void particle_system::gpu_alloc() {
     gpuErrchk ( cudaMalloc(&acc, total_vector_size) );
     gpuErrchk ( cudaMalloc(&timestep , total_nonvector_size) );
     gpuErrchk ( cudaMalloc(&m , total_nonvector_size) );
-
+    gpuErrchk ( cudaMalloc(&id , N * sizeof(int)) );
 }
 
 template<typename T>
@@ -116,6 +161,7 @@ inline void particle_system::gpu_free() {
     gpuErrchk ( cudaFree(acc) );
     gpuErrchk ( cudaFree(timestep) );
     gpuErrchk ( cudaFree(m) );
+    gpuErrchk ( cudaFree(id) );
     
 }
 
@@ -131,6 +177,7 @@ inline void particle_system::cpu_alloc() {
     acc = new vec3<T>[N];
     timestep = new T[N];
     m = new T[N];
+    id = new int[N];
 }
 
 
@@ -146,6 +193,7 @@ inline void particle_system::cpu_free() {
     delete [] acc;
     delete [] timestep;
     delete [] m;
+    delete [] id;
     
 }
 
@@ -164,7 +212,7 @@ inline void particle_system::host_to_gpu(particle_system* host_system) {
     gpuErrchk ( cudaMemcpy(acc, host_system->acc, total_vector_size, cudaMemcpyHostToDevice ) ) ;
     gpuErrchk ( cudaMemcpy(m, host_system->m, total_nonvector_size, cudaMemcpyHostToDevice ) ) ;
     gpuErrchk ( cudaMemcpy(timestep, host_system->timestep, total_nonvector_size, cudaMemcpyHostToDevice ) ) ;
-
+    gpuErrchk ( cudaMemcpy(id, host_system->id, N * sizeof(int), cudaMemcpyHostToDevice ) ) ;
 }
 
 template<typename T>
@@ -182,5 +230,6 @@ inline void particle_sytem::gpu_to_host(particle_system* gpu_system) {
     gpuErrchk ( cudaMemcpy(acc, gpu_system->acc, total_vector_size, cudaMemcpyDeviceToHost ) ) ;
     gpuErrchk ( cudaMemcpy(m, gpu_system->m, total_nonvector_size, cudaMemcpyDeviceToHost ) ) ;
     gpuErrchk ( cudaMemcpy(timestep, gpu_system->timestep, total_nonvector_size, cudaMemcpyDeviceToHost ) ) ;
+    gpuErrchk ( cudaMemcpy(id, gpu_system->id, N * sizeof(int), cudaMemcpyDeviceToHost ) ) ;
 
 }

@@ -313,6 +313,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             fast->vel[scanned_predicate_tid] = total->vel[tid];
             fast->m[scanned_predicate_tid] = total->m[tid];
             fast->timestep[scanned_predicate_tid] = total->timestep[tid];
+            fast->parent_id = tid;
         }
         else if(!predicate[tid] && part->N_fast > 0) { 
             int scanned_predicate_tid = tid - scanned_predicate[tid];
@@ -320,6 +321,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             slow->vel[scanned_predicate_tid] = total->vel[tid];
             slow->m[scanned_predicate_tid] = total->m[tid];
             slow->timestep[scanned_predicate_tid] = total->timestep[tid];
+            slow->parent_id = tid;
         }
 
 
@@ -329,6 +331,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             slow->vel[N_slow-1] = total->vel[tid];
             slow->m[N_slow-1] = total->m[tid];
             slow->timestep[N_slow-1] = total->timestep[tid];
+            slow->parent_id = tid;
         }
     }
 }
