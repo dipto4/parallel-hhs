@@ -8,7 +8,10 @@
 #include "kick.cuh"
 #include "scan.cuh"
 #include "particle_system.cuh"
+#include "update_system.cuh"
 
+
+#define UNROLL_FAC 4
 // should include a timestep as well
 
 template<typename T>
@@ -38,7 +41,8 @@ void hold(int clevel, particle_system* sys,
    at the end of each hold step
 
     Dipto (Feb 13) : How does this work?
-
+    Dipto (Feb 16) : Cheap fix is to add a parent index to every slow fast 
+    split in subsequent levels
 
     TODO: extra routine needed where new slow and fast buffers are created
     during each clevel
@@ -46,7 +50,7 @@ void hold(int clevel, particle_system* sys,
     Dipto (Feb 13): Added this
 */
 
-template<typename T>
+template<typename T, int BLOCKSIZE>
 void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* sys, 
         nbodysystem_buffers<T>* buffers,
         const int N_total, T stime, T etime, T dt, bool calc_timestep) {
@@ -58,7 +62,7 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
         timesteps(total);
     }
     // remember to add the relevant template information
-    split<>(total, 
+    split<T, BLOCKSIZE, UNROLL_FAC>(total, 
             clevel_buffers->slow, clevel_buffers->fast,
             globals->predicate, globals->scanned_predicate,
             dt, N_total, 
@@ -77,7 +81,7 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
     }
 
     if(clevel_buffers->part->N_fast > 0)  
-        hold_step(clevel + 1, 
+        hold_step<T, BLOCKSIZE>(clevel + 1, 
                 buffers->fast,
                 globals, 
                 clevel_buffers, clevel_buffers->part->N_fast, 
@@ -85,29 +89,29 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
                 false);
 
     if(clevel_buffers->part->N_slow > 0)
-       drift(clevel_buffers->slow, dt, (T) 0.5 , clevel_buffers->part->N_slow);
+       drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5 , clevel_buffers->part->N_slow);
 
     // TODO: add eps parameter here
     if(clevel_buffers->part->N_slow > 0) {
-        kick_self(clevel_buffers->slow, dt, (T) 1.0, clevel_buffers->part->N_slow);
+        kick_self<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 1.0, clevel_buffers->part->N_slow);
 
         if(clevel_buffers->part->N_fast > 0) {
             //TODO: add eps parameter here
-            kick_sf(clevel_buffers->slow, clevel_buffers->fast, dt, (T) 1.0, dt, clevel_buffers->part->N_slow);
-            kick_sf(clevel_buffers->fast, clevel_buffers->slow, dt, (T) 1.0, dt, clevel_buffers->part->N_slow);
+            kick_sf<T, BLOCKSIZE>(clevel_buffers->slow, clevel_buffers->fast, dt, (T) 1.0, dt, clevel_buffers->part->N_slow);
+            kick_sf<T, BLOCKSIZE>(clevel_buffers->fast, clevel_buffers->slow, dt, (T) 1.0, dt, clevel_buffers->part->N_slow);
         }
     }
     
     // add eps parameter here
     if(clevel_buffers->part->N_slow > 0)
-        drift(clevel_buffers->slow, dt, (T) 0.5, clevel_buffers->part->N_slow);
+        drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5, clevel_buffers->part->N_slow);
     
     // values in clevel-1 need to be updated here
     update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->fast, clevel_buffers->part->N_fast);    
     update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->slow, clevel_buffers->part->N_slow);    
 
     if(clevel_buffers->part->N_fast > 0)
-        hold_step(clevel + 1, 
+        hold_step<T, BLOCKSIZE>(clevel + 1, 
             buffers->fast,
             globals,
             clevel_buffers, 
