@@ -14,7 +14,7 @@ template<typename T>
 struct nbody_params {
     T eta;
     T eps;
-}
+};
 
 
 template<typename T>
@@ -71,7 +71,7 @@ class nbodysystem_globals {
         int N_total;
         nbody_params<T>* params;
          
-        nbodysystem_globals(N_init, eta, eps) : N_total(N_init) {
+        nbodysystem_globals(int N_init, T eta, T eps) : N_total(N_init) {
             std::cout<<"Initializing predicate and scanned_predicate buffers"<<std::endl;
             gpuErrchk ( cudaMalloc(&predicate , sizeof(int) * N_total) );
             gpuErrchk ( cudaMalloc(&scanned_predicate , sizeof(int) * N_total) );
@@ -99,7 +99,7 @@ class nbodysystem_globals {
         }
 
 
-}
+};
 
 
 template<typename T>
@@ -110,7 +110,7 @@ class nbodysystem_buffers {
         int N_total;
         partition* part;
 
-        nbodysystem_buffers(N_init) : N_total(N_init) {
+        nbodysystem_buffers(int N_init) : N_total(N_init) {
 #ifdef CUDA_DEBUG
             std::cout<<"Initializing slow and fast buffers"<<std::endl;
 #endif
@@ -123,7 +123,7 @@ class nbodysystem_buffers {
         }
 
         ~nbodysystem_buffers() {
-            gpuErrchk ( cudaFree(partition) );
+            gpuErrchk ( cudaFree(part) );
             slow->gpu_free();
             fast->gpu_free();
         }
@@ -131,10 +131,10 @@ class nbodysystem_buffers {
 
 
 template<typename T>
-inline void particle_system::gpu_alloc() {
+inline void particle_system<T>::gpu_alloc() {
     // check if particle system correct
     if(store == 'c')  {
-        std::cerr<<"Particle system store type is CPU but trying to allocate on the GPU! Exiting";
+        std::cerr<<"Particle system store type is CPU but trying to allocate on the GPU! Exiting"<<std::endl;
         exit(1);
     }
 
@@ -150,9 +150,9 @@ inline void particle_system::gpu_alloc() {
 }
 
 template<typename T>
-inline void particle_system::gpu_free() {
+inline void particle_system<T>::gpu_free() {
     if(store == 'c')  {
-        std::cerr<<"Particle system store type is CPU but trying to free on the GPU! Exiting";
+        std::cerr<<"Particle system store type is CPU but trying to free on the GPU! Exiting"<<std::endl;
         exit(1);
     }
     
@@ -166,9 +166,9 @@ inline void particle_system::gpu_free() {
 }
 
 template<typename T>
-inline void particle_system::cpu_alloc() {
+inline void particle_system<T>::cpu_alloc() {
      if(store == 'g')  {
-        std::cerr<<"Particle system store type is GPU but trying to allocate on the CPU! Exiting";
+        std::cerr<<"Particle system store type is GPU but trying to allocate on the CPU! Exiting"<<std::endl;
         exit(1);
     }
     
@@ -182,9 +182,9 @@ inline void particle_system::cpu_alloc() {
 
 
 template<typename T>
-inline void particle_system::cpu_free() {
+inline void particle_system<T>::cpu_free() {
     if(store == 'g')  {
-        std::cerr<<"Particle system store type is GPU but trying to free on the CPU! Exiting";
+        std::cerr<<"Particle system store type is GPU but trying to free on the CPU! Exiting"<<std::endl;
         exit(1);
     }
 
@@ -198,9 +198,9 @@ inline void particle_system::cpu_free() {
 }
 
 template<typename T>
-inline void particle_system::host_to_gpu(particle_system* host_system) {
+inline void particle_system<T>::host_to_gpu(particle_system<T>* host_system) {
     if(store == 'c') {
-        std::cerr<<"Particle system store type is CPU but trying to transfer from the CPU! Exiting";
+        std::cerr<<"Particle system store type is CPU but trying to transfer from the CPU! Exiting"<<std::endl;
         exit(1);
     }
     
@@ -216,9 +216,9 @@ inline void particle_system::host_to_gpu(particle_system* host_system) {
 }
 
 template<typename T>
-inline void particle_sytem::gpu_to_host(particle_system* gpu_system) {
+inline void particle_system<T>::gpu_to_host(particle_system<T>* gpu_system) {
     if(store == 'g') {
-        std::cerr<<"Particle system store type is GPU but trying to transfer from the GPU! Exiting";
+        std::cerr<<"Particle system store type is GPU but trying to transfer from the GPU! Exiting"<<std::endl;
         exit(1);
     }
     

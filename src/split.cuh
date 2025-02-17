@@ -293,7 +293,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             part->N_slow = N - part->N_fast;
 
 
-            if(part->N_fast) == 1 {
+            if(part->N_fast == 1) {
                 part->N_fast = 0;
                 part->N_slow = N;
             }
@@ -327,10 +327,10 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
 
 
         if(part->N_fast == 0 && predicate[tid]) {
-            slow->pos[N_slow-1] = total->pos[tid];
-            slow->vel[N_slow-1] = total->vel[tid];
-            slow->m[N_slow-1] = total->m[tid];
-            slow->timestep[N_slow-1] = total->timestep[tid];
+            slow->pos[part->N_slow-1] = total->pos[tid];
+            slow->vel[part->N_slow-1] = total->vel[tid];
+            slow->m[part->N_slow-1] = total->m[tid];
+            slow->timestep[part->N_slow-1] = total->timestep[tid];
             slow->parent_id = tid;
         }
     }
