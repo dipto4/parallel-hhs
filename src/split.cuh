@@ -36,6 +36,13 @@ __global__ void debug_cuPrintArr(T* arr, const int size) {
         printf("i = %i, val = %i\n", i, arr[i] );
     }
 }
+template<typename T>
+__global__ void debug_cuPrintVecArr(particle_system<T>* p, const int size) {
+    for(int i = 0 ; i < size; i++) {
+        printf("i = %i, val = %f\n", i, p->pos[i].x );
+    }
+}
+
 
 #endif
 
@@ -281,22 +288,25 @@ __global__ void _scan_predicate_multi_block(const int* __restrict__ predicate, i
 
 template<typename T>
 __global__ void _set_predicate(const int* predicate, const int* scanned_predicate, 
-        const particle_system<T>* __restrict__ total, particle_system<T>* __restrict__ slow, particle_system<T>* __restrict__ fast, 
+        particle_system<T>* total, particle_system<T>* slow, particle_system<T>* fast, 
         const int N,
         partition* part) {
-    size_t tid = threadIdx.x + blockDim.x * blockIdx.x;
+    int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
     if(tid < N) {
         
         if(tid == 0) { 
             part->N_fast = predicate[N-1] + scanned_predicate[N-1];
             part->N_slow = N - part->N_fast;
+#ifdef CUDA_DEBUG
+            printf("part->N_fast = %i\n", part->N_fast);
+            printf("part->N_slow = %i\n", part->N_slow);
+#endif
 
-
-            if(part->N_fast == 1) {
+            /*if(part->N_fast == 1) {
                 part->N_fast = 0;
                 part->N_slow = N;
-            }
+            }*/
         }
         // !!!!!CAUTION!!!!
         // Do all threads read a consistent value of N_fast?
@@ -304,35 +314,39 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
         //Is this necessary?
         // !!!!CAUTION!!!!
 
-        __syncthreads();
+        //__syncthreads();
 
         
-        if(predicate[tid] && part->N_fast > 0) {
+        if(predicate[tid]) {
             int scanned_predicate_tid = scanned_predicate[tid];
+#ifdef CUDA_DEBUG
+            printf("scanned_predicate_tid=%i\n", scanned_predicate[tid]);
+            //printf("total->pos[tid].x=%f\n",total->pos[tid].x);
+#endif
             fast->pos[scanned_predicate_tid] = total->pos[tid];
             fast->vel[scanned_predicate_tid] = total->vel[tid];
             fast->m[scanned_predicate_tid] = total->m[tid];
             fast->timestep[scanned_predicate_tid] = total->timestep[tid];
-            fast->parent_id = tid;
+            fast->parent_id[scanned_predicate_tid] = tid;
         }
-        else if(!predicate[tid] && part->N_fast > 0) { 
+        else if(!predicate[tid]) { 
             int scanned_predicate_tid = tid - scanned_predicate[tid];
             slow->pos[scanned_predicate_tid] = total->pos[tid];
             slow->vel[scanned_predicate_tid] = total->vel[tid];
             slow->m[scanned_predicate_tid] = total->m[tid];
             slow->timestep[scanned_predicate_tid] = total->timestep[tid];
-            slow->parent_id = tid;
+            slow->parent_id[scanned_predicate_tid] = tid;
         }
 
 
 
-        if(part->N_fast == 0 && predicate[tid]) {
+        /*if(part->N_fast == 0) {
             slow->pos[part->N_slow-1] = total->pos[tid];
             slow->vel[part->N_slow-1] = total->vel[tid];
             slow->m[part->N_slow-1] = total->m[tid];
             slow->timestep[part->N_slow-1] = total->timestep[tid];
-            slow->parent_id = tid;
-        }
+            slow->parent_id[part->N_slow-1] = tid;
+        }*/
     }
 }
 
@@ -382,13 +396,13 @@ __host__ void get_predicate(T* total,
 
 template<typename T, int BLOCKSIZE>
 __host__ void set_predicate(const int* predicate, const int* scanned_predicate, 
-        const particle_system<T>* total, particle_system<T>* slow, particle_system<T>* fast, 
+        particle_system<T>* total, particle_system<T>* slow, particle_system<T>* fast, 
         const int N, 
         partition* part) {
     dim3 block(BLOCKSIZE);
     dim3 grid((block.x + N - 1 ) / block.x );
 
-    _set_predicate<T><<<grid,block>>>(predicate, scanned_predicate, total, slow, fast, N, part);
+    _set_predicate<T><<<grid,block>>>(predicate, scanned_predicate, total->d_ptr, slow->d_ptr, fast->d_ptr, N, part);
 #ifdef CUDA_DEBUG
     gpuErrchk( cudaDeviceSynchronize() );
 #else
@@ -544,7 +558,13 @@ __host__ void split(particle_system<T>* __restrict__ total,
         scan_predicate_small<UNROLL>(predicate, scanned_predicate,N);
 
    }
-    
+#ifdef CUDA_DEBUG
+    debug_cuPrintVecArr<T><<<1,1>>>(total->d_ptr, N);
+    //printf("Preicate:\n");
+    //debug_cuPrintArr<<<1,1>>>(predicate,N);
+    //printf("Scanned predicate:\n");
+    //debug_cuPrintArr<<<1,1>>>(scanned_predicate,N);
+#endif
     set_predicate<T,BLOCKSIZE>(predicate, scanned_predicate, total, slow, fast, N, part);
     //cudaDeviceSynchronize();
 

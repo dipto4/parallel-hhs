@@ -31,6 +31,7 @@ class particle_system {
         char store; // either 'g' or 'c' indicating where the 
                     // data is stored so it is not illegally 
                     // accessed
+        particle_system<T>* d_ptr;
         particle_system(int N_init, char s) : N(N_init), store(s) {
             pos = nullptr;
             vel = nullptr;
@@ -38,6 +39,7 @@ class particle_system {
             m = nullptr;
             id = nullptr;
             parent_id = nullptr;
+            d_ptr = nullptr;
         } 
         
         void gpu_alloc();
@@ -118,7 +120,7 @@ class nbodysystem_buffers {
             fast = new particle_system<T>(N_init, 'g');
             slow->gpu_alloc();
             fast->gpu_alloc();
-            //gpuErrchk(  );
+            gpuErrchk( cudaMallocManaged(&part, sizeof(partition)) );
             //gpuErrchk(  );
         }
 
@@ -137,7 +139,6 @@ inline void particle_system<T>::gpu_alloc() {
         std::cerr<<"Particle system store type is CPU but trying to allocate on the GPU! Exiting"<<std::endl;
         exit(1);
     }
-
     size_t total_vector_size = N * sizeof(vec3<T>);
     size_t total_nonvector_size = N * sizeof(T);
     
@@ -147,6 +148,15 @@ inline void particle_system<T>::gpu_alloc() {
     gpuErrchk ( cudaMalloc(&timestep , total_nonvector_size) );
     gpuErrchk ( cudaMalloc(&m , total_nonvector_size) );
     gpuErrchk ( cudaMalloc(&id , N * sizeof(int)) );
+    gpuErrchk ( cudaMalloc(&parent_id , N * sizeof(int)) );
+
+    /* this is very important as the 
+       kernels in the split function
+       cannot directly access the host side pointer*/
+    gpuErrchk( cudaMalloc(&d_ptr, sizeof(particle_system<T>)) );
+    gpuErrchk( cudaMemcpy(d_ptr, this, sizeof(particle_system<T>), cudaMemcpyHostToDevice) );
+
+
 }
 
 template<typename T>
@@ -162,7 +172,8 @@ inline void particle_system<T>::gpu_free() {
     gpuErrchk ( cudaFree(timestep) );
     gpuErrchk ( cudaFree(m) );
     gpuErrchk ( cudaFree(id) );
-    
+    gpuErrchk ( cudaFree(parent_id) );
+    gpuErrchk ( cudaFree(d_ptr) );    
 }
 
 template<typename T>
@@ -178,6 +189,7 @@ inline void particle_system<T>::cpu_alloc() {
     timestep = new T[N];
     m = new T[N];
     id = new int[N];
+    parent_id = new int[N];
 }
 
 
