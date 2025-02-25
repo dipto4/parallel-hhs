@@ -11,10 +11,10 @@ template<typename T, int BLOCKSIZE>
 __device__ void _get_pp_timestep(vec3<T>& sink_pos, vec3<T>& sink_vel, T sink_m,
         vec3<T>* source_pos, vec3<T>* source_vel,
         T* source_m, T& minval, nbody_params<T>* params,
-        int iGlobal, int jTile) {
+        int iGlobal, int jTile, const int N) {
 
 #pragma unroll
-    for(int jLocal = 0 ; i < BLOCKSIZE; jLocal++) {
+    for(int jLocal = 0 ; jLocal < BLOCKSIZE; jLocal++) {
         int jGlobal = jLocal + jTile;
 
         if(jGlobal >= N) break;
@@ -25,7 +25,7 @@ __device__ void _get_pp_timestep(vec3<T>& sink_pos, vec3<T>& sink_vel, T sink_m,
         vec3<T> vj = source_vel[jLocal];
 
         vec3<T> dr = sink_pos - xj;
-        vec3<T> dv = source_vel - vj;
+        vec3<T> dv = sink_vel - vj;
 
         T dr2 = dr.norm2();
         T dv2 = dv.norm2();
@@ -40,8 +40,8 @@ __device__ void _get_pp_timestep(vec3<T>& sink_pos, vec3<T>& sink_vel, T sink_m,
 
         if(tau < minval) minval = tau;
 
-        tau = params->eta * r / sqrt(v2);
-        dtau = tau * vdotdr2 * (1 + (sink_m + source_m[jLocal]) / (v2 * r));
+        tau = params->eta * r / sqrt(dv2);
+        dtau = tau * vdotdr2 * (1 + (sink_m + source_m[jLocal]) / (dv2 * r));
         dtau = (dtau < 1)? dtau: 1;
 
         tau /= (1 - dtau / 2);
@@ -65,7 +65,7 @@ __global__ void _timesteps(vec3<T>* __restrict__ pos, vec3<T>* __restrict__ vel,
 
     T minval = (T) HUGE;
     
-    for(int jTile = 0 ; jTile < N; jTtile += BLOCKSIZE) {
+    for(int jTile = 0 ; jTile < N; jTile += BLOCKSIZE) {
         __shared__ vec3<T> tilePos[BLOCKSIZE];
         __shared__ vec3<T> tileVel[BLOCKSIZE];
         __shared__ T tileM[BLOCKSIZE];
@@ -75,12 +75,13 @@ __global__ void _timesteps(vec3<T>* __restrict__ pos, vec3<T>* __restrict__ vel,
         if(jLoad < N) {
             tilePos[threadIdx.x] = pos[jLoad];
             tileVel[threadIdx.x] = vel[jLoad];
+            tileM[threadIdx.x] = m[jLoad];
         }
         __syncthreads();
 
         _get_pp_timestep<T,BLOCKSIZE>(xi, vi, mi, 
                 tilePos, tileVel, tileM, minval, params,
-                tid, jTile);
+                tid, jTile, N);
 
         __syncthreads();
     }
