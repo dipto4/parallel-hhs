@@ -3,29 +3,28 @@
 // Diptajyoti Mukherjee
 
 #pragma once
-
+#include<cuda_runtime.h>
 #include "drift.cuh"
 #include "kick.cuh"
-#include "scan.cuh"
+#include "split.cuh"
 #include "particle_system.cuh"
-#include "update_system.cuh"
-
+//#include "update_system.cuh"
+#include "timestep.cuh"
 
 #define UNROLL_FAC 4
 // should include a timestep as well
+template<typename T, int BLOCKSIZE>
+void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* sys, 
+        nbodysystem_buffers<T>* buffers,
+        const int N_total, T stime, T etime, T dt, bool calc_timestep);
 
 template<typename T>
-void hold_step(int clevel, particle_system* sys, 
-        nbodysystem_buffers* buffers, 
-        const int N_total, T stime ,T etime, T dt,bool calc_timestep);
-
-template<typename T>
-void hold(int clevel, particle_system* sys, 
-        nbodysystem_buffers* buffers, 
+void hold(int clevel, particle_system<T>* sys, 
+        nbodysystem_buffers<T>* buffers, 
         const int N_total, T stime, T etime, T dt, bool calc_timestep);
 
 
-
+/*
 template<typename T>
 void hold(int clevel, particle_system* sys, 
         nbodysystem_buffers* buffers, 
@@ -34,7 +33,7 @@ void hold(int clevel, particle_system* sys,
     if(calc_timestep) timesteps(total);
 
     hold_step(clevel + 1, sys, buffers, N_total, stime, stime+dt, dt, false);
-}
+}*/
 
 
 /*  TODO: extra routine needed where the total particle system is updated
@@ -51,15 +50,15 @@ void hold(int clevel, particle_system* sys,
 */
 
 template<typename T, int BLOCKSIZE>
-void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* sys, 
+void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* total, 
         nbodysystem_buffers<T>* buffers,
         const int N_total, T stime, T etime, T dt, bool calc_timestep) {
 
     // add temporary buffers here
-    nbodysystem_buffers<T>* clevel_buffers(N_total);
+    nbodysystem_buffers<T>* clevel_buffers = new nbodysystem_buffers<T>(N_total);
     
     if(calc_timestep) {
-        timesteps(total);
+        timesteps<T, BLOCKSIZE>(total, globals, N_total);
     }
     // remember to add the relevant template information
     split<T, BLOCKSIZE, UNROLL_FAC>(total, 
@@ -82,8 +81,8 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
 
     if(clevel_buffers->part->N_fast > 0)  
         hold_step<T, BLOCKSIZE>(clevel + 1, 
-                buffers->fast,
-                globals, 
+                globals,
+                buffers->fast, 
                 clevel_buffers, clevel_buffers->part->N_fast, 
                 stime, stime + dt / 2, dt / 2, 
                 false);
@@ -93,12 +92,12 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
 
     // TODO: add eps parameter here
     if(clevel_buffers->part->N_slow > 0) {
-        kick_self<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 1.0, clevel_buffers->part->N_slow);
+        kick_slow<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 1.0, clevel_buffers->part->N_slow);
 
         if(clevel_buffers->part->N_fast > 0) {
             //TODO: add eps parameter here
-            kick_sf<T, BLOCKSIZE>(clevel_buffers->slow, clevel_buffers->fast, dt, (T) 1.0, dt, clevel_buffers->part->N_slow);
-            kick_sf<T, BLOCKSIZE>(clevel_buffers->fast, clevel_buffers->slow, dt, (T) 1.0, dt, clevel_buffers->part->N_slow);
+            kick_sf<T, BLOCKSIZE>(clevel_buffers->slow, clevel_buffers->fast, (T) 1.0, dt, clevel_buffers->part->N_slow);
+            kick_sf<T, BLOCKSIZE>(clevel_buffers->fast, clevel_buffers->slow, (T) 1.0, dt, clevel_buffers->part->N_slow);
         }
     }
     
@@ -107,13 +106,13 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
         drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5, clevel_buffers->part->N_slow);
     
     // values in clevel-1 need to be updated here
-    update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->fast, clevel_buffers->part->N_fast);    
-    update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->slow, clevel_buffers->part->N_slow);    
+    //update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->fast, clevel_buffers->part->N_fast);    
+    //update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->slow, clevel_buffers->part->N_slow);    
 
     if(clevel_buffers->part->N_fast > 0)
-        hold_step<T, BLOCKSIZE>(clevel + 1, 
+        hold_step<T, BLOCKSIZE>(clevel + 1,
+                globals,
             buffers->fast,
-            globals,
             clevel_buffers, 
             clevel_buffers->part->N_fast, stime, stime + dt / 2, dt / 2, 
             true);
