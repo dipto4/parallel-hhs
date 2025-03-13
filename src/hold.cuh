@@ -8,7 +8,7 @@
 #include "kick.cuh"
 #include "split.cuh"
 #include "particle_system.cuh"
-//#include "update_system.cuh"
+#include "update_system.cuh"
 #include "timestep.cuh"
 
 #define UNROLL_FAC 4
@@ -53,7 +53,7 @@ template<typename T, int BLOCKSIZE>
 void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* total, 
         nbodysystem_buffers<T>* buffers,
         const int N_total, T stime, T etime, T dt, bool calc_timestep) {
-
+    
     // add temporary buffers here
     nbodysystem_buffers<T>* clevel_buffers = new nbodysystem_buffers<T>(N_total);
     
@@ -65,9 +65,15 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
             clevel_buffers->slow, clevel_buffers->fast,
             globals->predicate, globals->scanned_predicate,
             dt, N_total, 
-            buffers->part);
+            clevel_buffers->part);
     
     cudaDeviceSynchronize();
+
+#ifdef DEBUG_HOLD
+    debug_cuPrintArr<<<1,1>>>(total->timestep, N_total); 
+    printf("clevel = %i\n, dt = %f\n, slow.n = %i, fast.n = %i\n", clevel, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
+#endif
+
 
     if(clevel_buffers->part->N_fast == 0) {
 #ifdef DEBUG_INTEGRATOR
@@ -106,8 +112,8 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
         drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5, clevel_buffers->part->N_slow);
     
     // values in clevel-1 need to be updated here
-    //update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->fast, clevel_buffers->part->N_fast);    
-    //update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->slow, clevel_buffers->part->N_slow);    
+    update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->fast, clevel_buffers->part->N_fast);    
+    update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->slow, clevel_buffers->part->N_slow);    
 
     if(clevel_buffers->part->N_fast > 0)
         hold_step<T, BLOCKSIZE>(clevel + 1,
