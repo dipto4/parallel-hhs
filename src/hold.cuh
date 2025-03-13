@@ -15,7 +15,6 @@
 // should include a timestep as well
 template<typename T, int BLOCKSIZE>
 void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* sys, 
-        nbodysystem_buffers<T>* buffers,
         const int N_total, T stime, T etime, T dt, bool calc_timestep);
 
 template<typename T>
@@ -51,7 +50,6 @@ void hold(int clevel, particle_system* sys,
 
 template<typename T, int BLOCKSIZE>
 void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* total, 
-        nbodysystem_buffers<T>* buffers,
         const int N_total, T stime, T etime, T dt, bool calc_timestep) {
     
     // add temporary buffers here
@@ -88,8 +86,7 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
     if(clevel_buffers->part->N_fast > 0)  
         hold_step<T, BLOCKSIZE>(clevel + 1, 
                 globals,
-                buffers->fast, 
-                clevel_buffers, clevel_buffers->part->N_fast, 
+                clevel_buffers->fast, clevel_buffers->part->N_fast, 
                 stime, stime + dt / 2, dt / 2, 
                 false);
 
@@ -112,14 +109,13 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
         drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5, clevel_buffers->part->N_slow);
     
     // values in clevel-1 need to be updated here
-    update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->fast, clevel_buffers->part->N_fast);    
-    update_system<T,BLOCKSIZE>(buffers->fast, clevel_buffers->slow, clevel_buffers->part->N_slow);    
+    update_system<T,BLOCKSIZE>(total, clevel_buffers->fast, clevel_buffers->part->N_fast);    
+    update_system<T,BLOCKSIZE>(total, clevel_buffers->slow, clevel_buffers->part->N_slow);    
 
     if(clevel_buffers->part->N_fast > 0)
         hold_step<T, BLOCKSIZE>(clevel + 1,
                 globals,
-            buffers->fast,
-            clevel_buffers, 
+            clevel_buffers->fast, 
             clevel_buffers->part->N_fast, stime, stime + dt / 2, dt / 2, 
             true);
 
