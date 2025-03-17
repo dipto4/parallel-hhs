@@ -26,25 +26,26 @@ __host__ void scan_predicate_large(int* predicate, int* scanned_predicate, const
 template<int UNROLL>
 __host__ void scan_predicate_large_ev(int* predicate, int* scanned_predicate, const int N, int BLOCKSIZE);
 
+template<typename T>
+__global__ void debug_cuPrintArr(T* arr, const int size);
 
 /* FOR DEBUGGING PURPOSES ONLY*/
 
-#ifdef CUDA_DEBUG
 template<typename T>
 __global__ void debug_cuPrintArr(T* arr, const int size) {
     for(int i = 0 ; i < size; i++) {
-        printf("i = %i, val = %i\n", i, arr[i] );
+        printf("i = %i, val = %f\n", i, arr[i] );
+
     }
 }
 template<typename T>
-__global__ void debug_cuPrintVecArr(particle_system<T>* p, const int size) {
+__global__ void debug_cuPrintVecArr(vec3<T>* p, const int size) {
     for(int i = 0 ; i < size; i++) {
-        printf("i = %i, val = %f\n", i, p->pos[i].x );
+        printf("i = %i, x = %f, y=%f, z=%f\n", i, p[i].x, p[i].y, p[i].z);
     }
 }
 
 
-#endif
 
 template<int UNROLL>
 __device__ void __forceinline__ _upsweep(int* _arr_slow, int tid, int BLOCKSIZE) {
@@ -314,7 +315,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
         //Is this necessary?
         // !!!!CAUTION!!!!
 
-        //__syncthreads();
+        __syncthreads();
 
         
         if(predicate[tid]) {
@@ -329,7 +330,8 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             fast->timestep[scanned_predicate_tid] = total->timestep[tid];
             fast->parent_id[scanned_predicate_tid] = tid;
         }
-        else if(!predicate[tid]) { 
+        
+        if(!predicate[tid]) { 
             int scanned_predicate_tid = tid - scanned_predicate[tid];
             slow->pos[scanned_predicate_tid] = total->pos[tid];
             slow->vel[scanned_predicate_tid] = total->vel[tid];
@@ -559,7 +561,7 @@ __host__ void split(particle_system<T>* __restrict__ total,
 
    }
 #ifdef CUDA_DEBUG
-    debug_cuPrintVecArr<T><<<1,1>>>(total->d_ptr, N);
+    //debug_cuPrintVecArr<T><<<1,1>>>(total->d_ptr, N);
     //printf("Preicate:\n");
     //debug_cuPrintArr<<<1,1>>>(predicate,N);
     //printf("Scanned predicate:\n");

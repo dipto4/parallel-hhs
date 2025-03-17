@@ -11,7 +11,7 @@
 #include "update_system.cuh"
 #include "timestep.cuh"
 
-#define UNROLL_FAC 4
+#define UNROLL_FAC 1
 // should include a timestep as well
 template<typename T, int BLOCKSIZE>
 void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* sys, 
@@ -54,7 +54,23 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
     
     // add temporary buffers here
     nbodysystem_buffers<T>* clevel_buffers = new nbodysystem_buffers<T>(N_total);
-    
+ 
+#ifdef DEBUG_HOLD
+    //debug_cuPrintArr<<<1,1>>>(total->timestep, N_total); 
+    printf("clevel = %i, dt = %f, slow.n = %i, fast.n = %i [BEFORE]\n", clevel, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
+    printf("positions [BEFORE]\n");
+    debug_cuPrintVecArr<<<1,1>>>(total->pos, N_total);
+    cudaDeviceSynchronize();
+    printf("velocities [BEFORE]\n");
+    debug_cuPrintVecArr<<<1,1>>>(total->vel, N_total);
+    cudaDeviceSynchronize();
+    printf("mass [BEFORE]\n");
+    debug_cuPrintArr<<<1,1>>>(total->m, N_total);
+    cudaDeviceSynchronize();
+
+
+#endif
+   
     if(calc_timestep) {
         timesteps<T, BLOCKSIZE>(total, globals, N_total);
     }
@@ -68,8 +84,21 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
     cudaDeviceSynchronize();
 
 #ifdef DEBUG_HOLD
-    debug_cuPrintArr<<<1,1>>>(total->timestep, N_total); 
-    printf("clevel = %i\n, dt = %f\n, slow.n = %i, fast.n = %i\n", clevel, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
+    //debug_cuPrintArr<<<1,1>>>(total->timestep, N_total); 
+    printf("clevel = %i, dt = %f, slow.n = %i, fast.n = %i\n", clevel, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
+    printf("timesteps\n");
+    debug_cuPrintArr<<<1,1>>>(total->timestep, N_total);
+    cudaDeviceSynchronize();
+    printf("positions\n");
+    debug_cuPrintVecArr<<<1,1>>>(total->pos, N_total);
+    cudaDeviceSynchronize();
+    printf("velocities\n");
+    debug_cuPrintVecArr<<<1,1>>>(total->vel, N_total);
+    cudaDeviceSynchronize();
+    printf("mass\n");
+    debug_cuPrintArr<<<1,1>>>(total->m, N_total);
+    cudaDeviceSynchronize();
+
 #endif
 
 
@@ -92,6 +121,9 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
 
     if(clevel_buffers->part->N_slow > 0)
        drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5 , clevel_buffers->part->N_slow);
+ 
+    debug_cuPrintArr<<<1,1>>>(clevel_buffers->slow->m, clevel_buffers->part->N_slow);
+    cudaDeviceSynchronize();
 
     // TODO: add eps parameter here
     if(clevel_buffers->part->N_slow > 0) {
@@ -103,21 +135,26 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
             kick_sf<T, BLOCKSIZE>(clevel_buffers->fast, clevel_buffers->slow, (T) 1.0, dt, clevel_buffers->part->N_slow);
         }
     }
-    
+    debug_cuPrintArr<<<1,1>>>(clevel_buffers->slow->m, clevel_buffers->part->N_slow);
+    cudaDeviceSynchronize();
+
+
     // add eps parameter here
     if(clevel_buffers->part->N_slow > 0)
         drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5, clevel_buffers->part->N_slow);
     
-    // values in clevel-1 need to be updated here
-    update_system<T,BLOCKSIZE>(total, clevel_buffers->fast, clevel_buffers->part->N_fast);    
-    update_system<T,BLOCKSIZE>(total, clevel_buffers->slow, clevel_buffers->part->N_slow);    
-
     if(clevel_buffers->part->N_fast > 0)
         hold_step<T, BLOCKSIZE>(clevel + 1,
                 globals,
             clevel_buffers->fast, 
             clevel_buffers->part->N_fast, stime, stime + dt / 2, dt / 2, 
             true);
+   
+
+    // values in clevel-1 need to be updated here
+    update_system<T,BLOCKSIZE>(total, clevel_buffers->fast, clevel_buffers->part->N_fast);    
+    update_system<T,BLOCKSIZE>(total, clevel_buffers->slow, clevel_buffers->part->N_slow);    
+
 
 }
 

@@ -4,16 +4,16 @@
 #define HUGE 1.e30
 
 
-template<typename T>
-void timesteps(particle_system<T>* sys, nbodysystem_globals<T>* globals);
+template<typename T, int BLOCKSIZE>
+void timesteps(particle_system<T>* sys, nbodysystem_globals<T>* globals, const int N);
 
 template<typename T, int BLOCKSIZE>
 __device__ void _get_pp_timestep(vec3<T>& sink_pos, vec3<T>& sink_vel, T sink_m,
-        vec3<T>* source_pos, vec3<T>* source_vel,
-        T* source_m, T& minval, nbody_params<T>* params,
+        vec3<T>* __restrict__ source_pos, vec3<T>* __restrict__ source_vel,
+        T* __restrict__ source_m, T& minval, nbody_params<T>* params,
         int iGlobal, int jTile, const int N) {
 
-#pragma unroll
+//#pragma unroll
     for(int jLocal = 0 ; jLocal < BLOCKSIZE; jLocal++) {
         int jGlobal = jLocal + jTile;
 
@@ -29,22 +29,31 @@ __device__ void _get_pp_timestep(vec3<T>& sink_pos, vec3<T>& sink_vel, T sink_m,
 
         T dr2 = dr.norm2();
         T dv2 = dv.norm2();
+    
+        //printf("from timestep.cuh jglobal=%i, dr2=%f\n",jGlobal,dr2);
+        //printf("from timestep.cuh jglobal=%i, dv2=%f\n",jGlobal,dv2);
 
         T r = sqrt(dr2);
         T vdotdr2 = (dr * dv) / (dr2);
 
         T tau = params->eta / M_SQRT2 * r * sqrt(r / (source_m[jLocal] + sink_m));
+        
+        //printf("from timestep.cuh jglobal=%i, 1/tau=%f\n",jGlobal, source_m[jLocal] + sink_m);
         T dtau = 3 * tau * vdotdr2 / 2;
         dtau = (dtau < 1) ? dtau : 1;
         tau /= (1 - dtau / 2);
-
+ 
         if(tau < minval) minval = tau;
 
         tau = params->eta * r / sqrt(dv2);
+
+        //printf("from timestep.cuh jglobal=%i, 1/tau=%f\n",jGlobal, source_m[jLocal] + sink_m);
         dtau = tau * vdotdr2 * (1 + (sink_m + source_m[jLocal]) / (dv2 * r));
         dtau = (dtau < 1)? dtau: 1;
 
         tau /= (1 - dtau / 2);
+        
+
         if(tau < minval) minval = tau;
 
 
@@ -64,12 +73,12 @@ __global__ void _timesteps(vec3<T>* __restrict__ pos, vec3<T>* __restrict__ vel,
     T mi = m[tid];
 
     T minval = (T) HUGE;
-    
-    for(int jTile = 0 ; jTile < N; jTile += BLOCKSIZE) {
-        __shared__ vec3<T> tilePos[BLOCKSIZE];
-        __shared__ vec3<T> tileVel[BLOCKSIZE];
-        __shared__ T tileM[BLOCKSIZE];
+    __shared__ vec3<T> tilePos[BLOCKSIZE];
+    __shared__ vec3<T> tileVel[BLOCKSIZE];
+    __shared__ T tileM[BLOCKSIZE];
 
+   
+    for(int jTile = 0 ; jTile < N; jTile += BLOCKSIZE) {
         int jLoad = jTile + threadIdx.x;
 
         if(jLoad < N) {
@@ -97,8 +106,8 @@ void timesteps(particle_system<T>* sys, nbodysystem_globals<T>* globals, const i
     dim3 grid((block.x + N - 1) / BLOCKSIZE);
 
 #ifdef CUDA_DEBUG
-     _timesteps<T, BLOCKSIZE><<<grid,block>>>(sys->pos, sys->vel, sys->m, sys->timestep, globals->params, N);
-     gpuErrchk( cudaDeviceSynchronize() );
+    _timesteps<T, BLOCKSIZE><<<grid,block>>>(sys->pos, sys->vel, sys->m, sys->timestep, globals->params, N);
+    gpuErrchk( cudaDeviceSynchronize() );
 #else
     _timesteps<T, BLOCKSIZE><<<grid,block>>>(sys->pos, sys->vel, sys->m, sys->timestep, globals->params, N);
 #endif

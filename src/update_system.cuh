@@ -17,6 +17,8 @@ __global__ void _update_system(particle_system<T>* prev_level_sys, particle_syst
         prev_level_sys->pos[p_id] = cur_level_sys->pos[tid];
         prev_level_sys->vel[p_id] = cur_level_sys->vel[tid];
         prev_level_sys->m[p_id] = cur_level_sys->m[tid];
+
+
         prev_level_sys->timestep[p_id] = cur_level_sys->timestep[tid];
 
     }
