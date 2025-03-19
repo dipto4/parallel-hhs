@@ -295,7 +295,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
     int tid = threadIdx.x + blockDim.x * blockIdx.x;
 
     if(tid < N) {
-        
+        int _reg_N_fast = predicate[N-1] + scanned_predicate[N-1]; 
         if(tid == 0) { 
             part->N_fast = predicate[N-1] + scanned_predicate[N-1];
             part->N_slow = N - part->N_fast;
@@ -304,10 +304,10 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             printf("part->N_slow = %i\n", part->N_slow);
 #endif
 
-            /*if(part->N_fast == 1) {
+            if(_reg_N_fast == 1) {
                 part->N_fast = 0;
                 part->N_slow = N;
-            }*/
+            }
         }
         // !!!!!CAUTION!!!!
         // Do all threads read a consistent value of N_fast?
@@ -342,13 +342,13 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
 
 
 
-        /*if(part->N_fast == 0) {
-            slow->pos[part->N_slow-1] = total->pos[tid];
-            slow->vel[part->N_slow-1] = total->vel[tid];
-            slow->m[part->N_slow-1] = total->m[tid];
-            slow->timestep[part->N_slow-1] = total->timestep[tid];
-            slow->parent_id[part->N_slow-1] = tid;
-        }*/
+        if(_reg_N_fast == 1) {
+            slow->pos[N-1] = total->pos[tid];
+            slow->vel[N-1] = total->vel[tid];
+            slow->m[N-1] = total->m[tid];
+            slow->timestep[N-1] = total->timestep[tid];
+            slow->parent_id[N-1] = tid;
+        }
     }
 }
 

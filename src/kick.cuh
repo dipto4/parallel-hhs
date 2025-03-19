@@ -10,7 +10,7 @@ void kick_slow(particle_system<T>* part,
 template<typename T, int BLOCKSIZE>
 void kick_sf(particle_system<T>* so_sys,
         particle_system<T>* si_sys,
-        T dt, T fac, const int N);
+        T dt, T fac, const int N, const int M);
 
 template<typename T, int BLOCKSIZE>
 __device__ void pp_force(const vec3<T>& sink, const vec3<T>* __restrict__ sources, const T* __restrict__ m, vec3<T>& acc, 
@@ -74,6 +74,8 @@ __global__ void _kick_slow(const vec3<T>* __restrict__ pos,
 
 }
 
+/* N : number of sink particles
+   M : number of source particles */ 
 
 template<typename T, int BLOCKSIZE>
 __global__ void _kick_sf(const vec3<T>* __restrict__ so_pos,
@@ -81,32 +83,43 @@ __global__ void _kick_sf(const vec3<T>* __restrict__ so_pos,
         const vec3<T>* __restrict__ si_pos, 
         vec3<T>* __restrict__ si_vel, 
         vec3<T>* __restrict__ si_acc, 
-        const T dt, const T fac, const int N
-        ) {
+        const T dt, const T fac, const int N,
+        const int M) {
+    size_t tid = threadIdx.x + blockIdx.x * blockDim.x;
+    
+    bool isActive = (tid < N);
+    vec3<T> cur_part = isActive ? si_pos[tid] : vec3<T>(0.0, 0.0, 0.0);
+
+    //if(tid >= N) return;
 
     __shared__ vec3<T> cache[BLOCKSIZE];
     __shared__ T cache_m[BLOCKSIZE];
 
-    size_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    vec3<T> cur_part = si_pos[tid];
+    //vec3<T> cur_part = si_pos[tid];
     vec3<T> acc_i(0.0, 0.0, 0.0);
-    for(size_t i = 0, tile = 0; i < N; i+=BLOCKSIZE, tile++) {
-        cache[threadIdx.x] = so_pos[blockDim.x * tile + threadIdx.x];
-        cache_m[threadIdx.x] = so_m[blockDim.x * tile + threadIdx.x];
-
+    for(int jTile = 0 ; jTile < M; jTile+=BLOCKSIZE) {
+        int jLoad = jTile + threadIdx.x;
+        if(jLoad < M) {
+            cache[threadIdx.x] = so_pos[jLoad];
+            cache_m[threadIdx.x] = so_m[jLoad];
+        } else {
+            cache[threadIdx.x] = vec3<T>(0.0, 0.0, 0.0);
+            cache_m[threadIdx.x] = (T)0.0;
+        }
         __syncthreads();
-
-        //pp_force<T,BLOCKSIZE>(cur_part, cache, cache_m, acc_i);
-
+        if(isActive) {
+            pp_force<T,BLOCKSIZE>(cur_part, cache, cache_m, acc_i, tid, jTile, M);
+        }
         __syncthreads();
 
     }
+    if (isActive) {
 
-    si_acc[tid] = acc_i;    
+        si_acc[tid] = acc_i;    
 
-    si_vel[tid] = si_vel[tid] +  acc_i * (fac * dt);
+        si_vel[tid] = si_vel[tid] +  acc_i * (fac * dt);
+    }
 }
-
 
 
 template<typename T, int BLOCKSIZE>
@@ -116,16 +129,21 @@ void kick_slow(particle_system<T>* sys,
     dim3 grid((N+block.x-1)/block.x);
     _kick_slow<T,BLOCKSIZE><<<grid,block>>>(sys->pos, sys->vel, sys->acc, sys->m,
             dt, fac, N);
+        gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
 
 }
 
 template<typename T, int BLOCKSIZE>
 void kick_sf(particle_system<T>* so_sys,
         particle_system<T>* si_sys,
-        T dt, T fac, const int N) {
+        T dt, T fac, const int N, const int M) {
     dim3 block(BLOCKSIZE);
     dim3 grid((N+block.x-1)/block.x);
     _kick_sf<T,BLOCKSIZE><<<grid,block>>>(so_sys->pos, so_sys->m, 
-            si_sys->pos, si_sys->vel, si_sys->acc, dt, fac, N);
+            si_sys->pos, si_sys->vel, si_sys->acc, dt, fac, N, M);
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
+
 }
 

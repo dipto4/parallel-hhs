@@ -121,9 +121,15 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
 
     if(clevel_buffers->part->N_slow > 0)
        drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5 , clevel_buffers->part->N_slow);
- 
-    debug_cuPrintArr<<<1,1>>>(clevel_buffers->slow->m, clevel_buffers->part->N_slow);
+    
+#ifdef DEBUG_HOLD_SF
+    if(clevel_buffers->part->N_slow > 0 && clevel==0) {
+        printf("slow-fast after D\n");
+        debug_cuPrintVecArr<<<1,1>>>(clevel_buffers->slow->vel, clevel_buffers->part->N_slow);
+        //debug_cuPrintVecArr<<<1,1>>>(clevel_buffers->fast->vel, clevel_buffers->part->N_fast);
     cudaDeviceSynchronize();
+    }
+#endif
 
     // TODO: add eps parameter here
     if(clevel_buffers->part->N_slow > 0) {
@@ -131,18 +137,30 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
 
         if(clevel_buffers->part->N_fast > 0) {
             //TODO: add eps parameter here
-            kick_sf<T, BLOCKSIZE>(clevel_buffers->slow, clevel_buffers->fast, (T) 1.0, dt, clevel_buffers->part->N_slow);
-            kick_sf<T, BLOCKSIZE>(clevel_buffers->fast, clevel_buffers->slow, (T) 1.0, dt, clevel_buffers->part->N_slow);
+            kick_sf<T, BLOCKSIZE>(clevel_buffers->fast, clevel_buffers->slow, (T) 1.0, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
+            kick_sf<T, BLOCKSIZE>(clevel_buffers->slow, clevel_buffers->fast, (T) 1.0, dt, clevel_buffers->part->N_fast, clevel_buffers->part->N_slow);
+            //kick_sf<T, BLOCKSIZE>(clevel_buffers->fast, clevel_buffers->slow, (T) 1.0, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
         }
     }
-    debug_cuPrintArr<<<1,1>>>(clevel_buffers->slow->m, clevel_buffers->part->N_slow);
+#ifdef DEBUG_HOLD_SF
+    if(clevel_buffers->part->N_slow > 0 && clevel==0) {
+        printf("slow-fast after DK\n");
+        debug_cuPrintVecArr<<<1,1>>>(clevel_buffers->slow->vel, clevel_buffers->part->N_slow);
+        //debug_cuPrintVecArr<<<1,1>>>(clevel_buffers->fast->vel, clevel_buffers->part->N_fast);
     cudaDeviceSynchronize();
-
+    }
+#endif
 
     // add eps parameter here
     if(clevel_buffers->part->N_slow > 0)
         drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5, clevel_buffers->part->N_slow);
+     // values in clevel-1 need to be updated here
     
+
+     //update_system<T,BLOCKSIZE>(total, clevel_buffers->fast, clevel_buffers->part->N_fast);    
+    //update_system<T,BLOCKSIZE>(total, clevel_buffers->slow, clevel_buffers->part->N_slow);    
+
+   
     if(clevel_buffers->part->N_fast > 0)
         hold_step<T, BLOCKSIZE>(clevel + 1,
                 globals,

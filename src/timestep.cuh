@@ -104,12 +104,15 @@ template<typename T, int BLOCKSIZE>
 void timesteps(particle_system<T>* sys, nbodysystem_globals<T>* globals, const int N) {
     dim3 block(BLOCKSIZE);
     dim3 grid((block.x + N - 1) / BLOCKSIZE);
-
+    
 #ifdef CUDA_DEBUG
     _timesteps<T, BLOCKSIZE><<<grid,block>>>(sys->pos, sys->vel, sys->m, sys->timestep, globals->params, N);
+    gpuErrchk( cudaPeekAtLastError() );
     gpuErrchk( cudaDeviceSynchronize() );
 #else
     _timesteps<T, BLOCKSIZE><<<grid,block>>>(sys->pos, sys->vel, sys->m, sys->timestep, globals->params, N);
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
 #endif
 
 }
