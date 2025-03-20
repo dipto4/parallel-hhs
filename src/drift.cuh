@@ -36,6 +36,9 @@ void drift(particle_system<T>* __restrict__ sys,
     dim3 grid((BLOCKSIZE+N-1)/BLOCKSIZE);
 
     _drift<T><<<grid,block>>>(sys->pos, sys->vel, dt, fac, N);
+    //gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
+
 
 }
 

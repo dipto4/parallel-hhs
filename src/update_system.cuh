@@ -36,5 +36,8 @@ void update_system(particle_system<T>* prev_level_sys, particle_system<T>* cur_l
 
     _update_system<<<grid,block>>>(prev_level_sys->d_ptr, cur_level_sys->d_ptr, N);
 
+    //gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
+
 
 }

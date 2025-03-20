@@ -16,7 +16,7 @@ template<typename T, int BLOCKSIZE>
 __device__ void pp_force(const vec3<T>& sink, const vec3<T>* __restrict__ sources, const T* __restrict__ m, vec3<T>& acc, 
         const int iGlobal, const int jTile, const int N) {
 //#pragma unroll
-    for(size_t jLocal = 0 ; jLocal < BLOCKSIZE ; jLocal++) {
+    for(int jLocal = 0 ; jLocal < BLOCKSIZE ; jLocal++) {
         int jGlobal = jLocal + jTile;
         if(jGlobal >= N) break;
 
@@ -31,6 +31,31 @@ __device__ void pp_force(const vec3<T>& sink, const vec3<T>* __restrict__ source
 
 }
 
+
+
+template<typename T, int BLOCKSIZE>
+__device__ void pp_force2(const vec3<T>& sink, const vec3<T>* __restrict__ sources, const T* __restrict__ m, vec3<T>& acc, 
+        const int iGlobal, const int jTile, const int N) {
+//#pragma unroll
+    for(int jLocal = 0 ; jLocal < BLOCKSIZE ; jLocal++) {
+        int jGlobal = jLocal + jTile;
+        if(jGlobal >= N) break;
+
+        vec3<T> dx = sources[jLocal] - sink;
+        T d2 = dx.norm2();
+        /*printf("GPUDEBUG tid=%i, jLocal=%i, sources.x=%f, sources.y=%f, sources.z=%f, m=%f\n", iGlobal, jLocal, sources[jLocal].x, sources[jLocal].y, sources[jLocal].z, m[jLocal]);*/
+        //printf("GPUDEBUG tid=%i, jLocal=%i, d2=%f\n", iGlobal, jLocal, d2);
+        if(d2 == (T) 0.0) continue;
+        T d = sqrt(d2);
+        T one_over_d3 = 1.0/(d2 * d);
+        vec3<T> ai =  dx * (-m[jLocal] * one_over_d3);
+        acc = acc + ai;
+    }
+
+}
+
+
+
 template<typename T, int BLOCKSIZE>
 __global__ void _kick_slow(const vec3<T>* __restrict__ pos,
         vec3<T>* __restrict__ vel,
@@ -42,14 +67,16 @@ __global__ void _kick_slow(const vec3<T>* __restrict__ pos,
     // kick step
 
     size_t tid = threadIdx.x + blockIdx.x * blockDim.x;
-    if(tid >= N) return;
-
-    vec3<T> cur_part = pos[tid];
+    //if(tid >= N) return;
+    bool isActive = (tid < N);
+    vec3<T> cur_part = isActive ? pos[tid] : vec3<T>(0.0, 0.0, 0.0);
+    //vec3<T> cur_part = pos[tid];
     vec3<T> acc_i(0.0, 0.0, 0.0);
     __shared__ vec3<T> cache[BLOCKSIZE];
     __shared__ T cache_m[BLOCKSIZE];
 
 
+    //printf("GPUDEBUG tid=%i, vel.x=%f, vel.y=%f, vel.z=%f\n",tid, si_vel[tid].x, si_vel[tid].y, si_vel[tid].z);
 
 
     for(int jTile = 0; jTile < N; jTile+=BLOCKSIZE) {
@@ -57,21 +84,25 @@ __global__ void _kick_slow(const vec3<T>* __restrict__ pos,
         if(jLoad < N) {
             cache[threadIdx.x] = pos[jLoad];
             cache_m[threadIdx.x] = m[jLoad];
+        } else {
+            cache[threadIdx.x] = vec3<T>(0.0,0.0,0.0);
+            cache_m[threadIdx.x] = (T) 0.0;
+        }
+        __syncthreads();
+        if(isActive) {
+            pp_force<T,BLOCKSIZE>(cur_part, cache, cache_m, acc_i, tid, jTile, N);
         }
         __syncthreads();
 
-        pp_force<T,BLOCKSIZE>(cur_part, cache, cache_m, acc_i, tid, jTile, N);
+    }
+    if(isActive) {
+        acc[tid] = acc_i;    
+    
+        vel[tid] = vel[tid] + acc_i * (fac * dt);
+    
 
-        __syncthreads();
 
     }
-
-    acc[tid] = acc_i;    
-    
-    vel[tid] = vel[tid] + acc_i * (fac * dt);
-
-
-
 }
 
 /* N : number of sink particles
@@ -94,6 +125,7 @@ __global__ void _kick_sf(const vec3<T>* __restrict__ so_pos,
 
     __shared__ vec3<T> cache[BLOCKSIZE];
     __shared__ T cache_m[BLOCKSIZE];
+    //printf("GPUDEBUG tid=%i, vel.x=%f, vel.y=%f, vel.z=%f\n",tid, si_vel[tid].x, si_vel[tid].y, si_vel[tid].z);
 
     //vec3<T> cur_part = si_pos[tid];
     vec3<T> acc_i(0.0, 0.0, 0.0);
@@ -108,11 +140,12 @@ __global__ void _kick_sf(const vec3<T>* __restrict__ so_pos,
         }
         __syncthreads();
         if(isActive) {
-            pp_force<T,BLOCKSIZE>(cur_part, cache, cache_m, acc_i, tid, jTile, M);
+            pp_force2<T,BLOCKSIZE>(cur_part, cache, cache_m, acc_i, tid, jTile, M);
         }
         __syncthreads();
 
     }
+
     if (isActive) {
 
         si_acc[tid] = acc_i;    
@@ -129,8 +162,8 @@ void kick_slow(particle_system<T>* sys,
     dim3 grid((N+block.x-1)/block.x);
     _kick_slow<T,BLOCKSIZE><<<grid,block>>>(sys->pos, sys->vel, sys->acc, sys->m,
             dt, fac, N);
-        gpuErrchk( cudaPeekAtLastError() );
-    gpuErrchk( cudaDeviceSynchronize() );
+        //gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
 
 }
 
@@ -142,8 +175,8 @@ void kick_sf(particle_system<T>* so_sys,
     dim3 grid((N+block.x-1)/block.x);
     _kick_sf<T,BLOCKSIZE><<<grid,block>>>(so_sys->pos, so_sys->m, 
             si_sys->pos, si_sys->vel, si_sys->acc, dt, fac, N, M);
-    gpuErrchk( cudaPeekAtLastError() );
-    gpuErrchk( cudaDeviceSynchronize() );
+    //gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
 
 }
 

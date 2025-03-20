@@ -11,7 +11,7 @@
 #include "update_system.cuh"
 #include "timestep.cuh"
 
-#define UNROLL_FAC 1
+#define UNROLL_FAC 4
 // should include a timestep as well
 template<typename T, int BLOCKSIZE>
 void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* sys, 
@@ -59,13 +59,13 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
     //debug_cuPrintArr<<<1,1>>>(total->timestep, N_total); 
     printf("clevel = %i, dt = %f, slow.n = %i, fast.n = %i [BEFORE]\n", clevel, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
     printf("positions [BEFORE]\n");
-    debug_cuPrintVecArr<<<1,1>>>(total->pos, N_total);
+    debug_cuPrintVecArrID<<<1,1>>>(total->pos, total->id,N_total);
     cudaDeviceSynchronize();
     printf("velocities [BEFORE]\n");
-    debug_cuPrintVecArr<<<1,1>>>(total->vel, N_total);
+    debug_cuPrintVecArrID<<<1,1>>>(total->vel, total->id,N_total);
     cudaDeviceSynchronize();
     printf("mass [BEFORE]\n");
-    debug_cuPrintArr<<<1,1>>>(total->m, N_total);
+    debug_cuPrintArrID<<<1,1>>>(total->m, total->id,N_total);
     cudaDeviceSynchronize();
 
 
@@ -74,6 +74,7 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
     if(calc_timestep) {
         timesteps<T, BLOCKSIZE>(total, globals, N_total);
     }
+    
     // remember to add the relevant template information
     split<T, BLOCKSIZE, UNROLL_FAC>(total, 
             clevel_buffers->slow, clevel_buffers->fast,
@@ -81,22 +82,22 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
             dt, N_total, 
             clevel_buffers->part);
     
-    cudaDeviceSynchronize();
+    //cudaDeviceSynchronize();
 
 #ifdef DEBUG_HOLD
     //debug_cuPrintArr<<<1,1>>>(total->timestep, N_total); 
     printf("clevel = %i, dt = %f, slow.n = %i, fast.n = %i\n", clevel, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
     printf("timesteps\n");
-    debug_cuPrintArr<<<1,1>>>(total->timestep, N_total);
+    debug_cuPrintArrID<<<1,1>>>(total->timestep, total->id,N_total);
     cudaDeviceSynchronize();
     printf("positions\n");
-    debug_cuPrintVecArr<<<1,1>>>(total->pos, N_total);
+    debug_cuPrintVecArrID<<<1,1>>>(total->pos, total->id,N_total);
     cudaDeviceSynchronize();
     printf("velocities\n");
-    debug_cuPrintVecArr<<<1,1>>>(total->vel, N_total);
+    debug_cuPrintVecArrID<<<1,1>>>(total->vel, total->id,N_total);
     cudaDeviceSynchronize();
     printf("mass\n");
-    debug_cuPrintArr<<<1,1>>>(total->m, N_total);
+    debug_cuPrintArrID<<<1,1>>>(total->m, total->id,N_total);
     cudaDeviceSynchronize();
 
 #endif
@@ -122,10 +123,11 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
     if(clevel_buffers->part->N_slow > 0)
        drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5 , clevel_buffers->part->N_slow);
     
+    //cudaDeviceSynchronize();
 #ifdef DEBUG_HOLD_SF
-    if(clevel_buffers->part->N_slow > 0 && clevel==0) {
+    if(clevel_buffers->part->N_slow > 0 && clevel==1) {
         printf("slow-fast after D\n");
-        debug_cuPrintVecArr<<<1,1>>>(clevel_buffers->slow->vel, clevel_buffers->part->N_slow);
+        debug_cuPrintVecArrID<<<1,1>>>(clevel_buffers->slow->vel, clevel_buffers->slow->id,clevel_buffers->part->N_slow);
         //debug_cuPrintVecArr<<<1,1>>>(clevel_buffers->fast->vel, clevel_buffers->part->N_fast);
     cudaDeviceSynchronize();
     }
@@ -142,10 +144,11 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
             //kick_sf<T, BLOCKSIZE>(clevel_buffers->fast, clevel_buffers->slow, (T) 1.0, dt, clevel_buffers->part->N_slow, clevel_buffers->part->N_fast);
         }
     }
+    //cudaDeviceSynchronize();
 #ifdef DEBUG_HOLD_SF
-    if(clevel_buffers->part->N_slow > 0 && clevel==0) {
+    if(clevel_buffers->part->N_slow > 0 && clevel==1) {
         printf("slow-fast after DK\n");
-        debug_cuPrintVecArr<<<1,1>>>(clevel_buffers->slow->vel, clevel_buffers->part->N_slow);
+        debug_cuPrintVecArrID<<<1,1>>>(clevel_buffers->slow->vel, clevel_buffers->slow->id, clevel_buffers->part->N_slow);
         //debug_cuPrintVecArr<<<1,1>>>(clevel_buffers->fast->vel, clevel_buffers->part->N_fast);
     cudaDeviceSynchronize();
     }
@@ -156,6 +159,7 @@ void hold_step(int clevel, nbodysystem_globals<T>* globals, particle_system<T>* 
         drift<T, BLOCKSIZE>(clevel_buffers->slow, dt, (T) 0.5, clevel_buffers->part->N_slow);
      // values in clevel-1 need to be updated here
     
+    //cudaDeviceSynchronize();
 
      //update_system<T,BLOCKSIZE>(total, clevel_buffers->fast, clevel_buffers->part->N_fast);    
     //update_system<T,BLOCKSIZE>(total, clevel_buffers->slow, clevel_buffers->part->N_slow);    

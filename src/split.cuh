@@ -45,6 +45,20 @@ __global__ void debug_cuPrintVecArr(vec3<T>* p, const int size) {
     }
 }
 
+template<typename T>
+__global__ void debug_cuPrintArrID(T* arr, int* id,const int size) {
+    for(int i = 0 ; i < size; i++) {
+        printf("i = %i, val = %f\n", id[i], arr[i] );
+
+    }
+}
+template<typename T>
+__global__ void debug_cuPrintVecArrID(vec3<T>* p, int* id,const int size) {
+    for(int i = 0 ; i < size; i++) {
+        printf("i = %i, x = %f, y=%f, z=%f\n", id[i], p[i].x, p[i].y, p[i].z);
+    }
+}
+
 
 
 template<int UNROLL>
@@ -328,6 +342,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             fast->vel[scanned_predicate_tid] = total->vel[tid];
             fast->m[scanned_predicate_tid] = total->m[tid];
             fast->timestep[scanned_predicate_tid] = total->timestep[tid];
+            fast->id[scanned_predicate_tid] = total->id[tid];
             fast->parent_id[scanned_predicate_tid] = tid;
         }
         
@@ -337,6 +352,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             slow->vel[scanned_predicate_tid] = total->vel[tid];
             slow->m[scanned_predicate_tid] = total->m[tid];
             slow->timestep[scanned_predicate_tid] = total->timestep[tid];
+            slow->id[scanned_predicate_tid] = total->id[tid];
             slow->parent_id[scanned_predicate_tid] = tid;
         }
 
@@ -347,6 +363,7 @@ __global__ void _set_predicate(const int* predicate, const int* scanned_predicat
             slow->vel[N-1] = total->vel[tid];
             slow->m[N-1] = total->m[tid];
             slow->timestep[N-1] = total->timestep[tid];
+            slow->id[N-1] = total->id[tid];
             slow->parent_id[N-1] = tid;
         }
     }
@@ -409,6 +426,10 @@ __host__ void set_predicate(const int* predicate, const int* scanned_predicate,
     gpuErrchk( cudaDeviceSynchronize() );
 #else
     // cudaDeviceSynchronize();
+    //gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
+
+
 #endif
 }
 
@@ -438,6 +459,10 @@ __host__ void scan_predicate_small(int* predicate, int* scanned_predicate, const
     gpuErrchk( cudaDeviceSynchronize() );
 #else
         //cudaDeviceSynchronize();
+    gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
+
+
 #endif
 
 }
@@ -469,7 +494,11 @@ __host__ void scan_predicate_large(int* predicate, int* scanned_predicate, const
 #ifdef CUDA_DEBUG  
         gpuErrchk( cudaDeviceSynchronize() );
 #else
-        //   cudaDeviceSynchronize();
+           //cudaDeviceSynchronize();
+            //gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
+
+
 #endif
     }
 }
@@ -492,6 +521,10 @@ __host__ void scan_predicate_large_ev(int* predicate, int* scanned_predicate, co
     gpuErrchk( cudaDeviceSynchronize() );
 #else
     //    cudaDeviceSynchronize();
+    //gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
+
+
 #endif
 
     //printf("BLOCKSIZE: %i, N: %i\n ", BLOCKSIZE, N);
@@ -520,6 +553,10 @@ __host__ void scan_predicate_large_ev(int* predicate, int* scanned_predicate, co
 
 #else
     //    cudaDeviceSynchronize();
+    //gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
+
+
 #endif
 
     // free space of temp arrays

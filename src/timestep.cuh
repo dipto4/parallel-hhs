@@ -111,8 +111,8 @@ void timesteps(particle_system<T>* sys, nbodysystem_globals<T>* globals, const i
     gpuErrchk( cudaDeviceSynchronize() );
 #else
     _timesteps<T, BLOCKSIZE><<<grid,block>>>(sys->pos, sys->vel, sys->m, sys->timestep, globals->params, N);
-    gpuErrchk( cudaPeekAtLastError() );
-    gpuErrchk( cudaDeviceSynchronize() );
+    //gpuErrchk( cudaPeekAtLastError() );
+    //gpuErrchk( cudaDeviceSynchronize() );
 #endif
 
 }
